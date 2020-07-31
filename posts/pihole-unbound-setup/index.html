@@ -1,0 +1,64 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><meta name="og:site_name" content="lsvra"/><link rel="canonical" href="https://lsvra.com/posts/pihole-unbound-setup"/><meta name="twitter:url" content="https://lsvra.com/posts/pihole-unbound-setup"/><meta name="og:url" content="https://lsvra.com/posts/pihole-unbound-setup"/><title>lsvra | Straight from the horse's mouth: Setup your own recursive DNS resolver</title><meta name="twitter:title" content="Straight from the horse's mouth: Setup your own recursive DNS resolver | lsvra"/><meta name="og:title" content="Straight from the horse's mouth: Setup your own recursive DNS resolver | lsvra"/><meta name="description" content="A guide on how to transform your Pi-hole into an all-around DNS solution."/><meta name="twitter:description" content="A guide on how to transform your Pi-hole into an all-around DNS solution."/><meta name="og:description" content="A guide on how to transform your Pi-hole into an all-around DNS solution."/><meta name="twitter:card" content="summary"/><link rel="stylesheet" href="/styles.css" type="text/css"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><link rel="shortcut icon" href="/images/favicon.png" type="image/png"/><link rel="alternate" href="/feed.rss" type="application/rss+xml" title="Subscribe to lsvra"/><meta name="twitter:image" content="https://lsvra.com/images/default.png"/><meta name="og:image" content="https://lsvra.com/images/default.png"/></head><body class="item-page"><header><div class="wrapper"><a class="site-name" href="/">When in doubt, delete it.</a><ul class="social-list"><li><a href="https://twitter.com/lsvra_"><img alt="Twitter" src="/images/social/logo-twitter.svg"/></a></li><li><a href="https://github.com/lsvra"><img alt="GitHub" src="/images/social/logo-github.svg"/></a></li><li><a href="https://lsvra.com/feed.rss"><img alt="RSS Feed" src="/images/social/logo-rss.svg"/></a></li></ul></div></header><div class="wrapper"><h6>July 31, 2020</h6><article><div class="content"><h1>Straight from the horse's mouth: Setup your own recursive DNS resolver</h1><p>This starts with the concept of digital footprint minimization.</p><p>I <strong>frequently delete my unused online accounts</strong>. More recently even ditched a <strong>popular data harvesting email provider</strong>. One of my tech mottos has always been <strong>to keep my privacy without sacrifice usability</strong>.</p><p>With that in mind, after <a href="https://lsvra.com/posts/pihole-vodafone-router/">my recent Pi-hole installation</a> I went on and started looking for something to use as a DNS resolver instead of Cloudflare.</p><p>And I came across with Unbound.</p><h2>What is Unbound?</h2><p>From their <a href="https://nlnetlabs.nl/projects/unbound/about/">website</a>:</p><blockquote><p>Unbound is a validating, recursive, caching DNS resolver. It is designed to be fast and lean and incorporates modern features based on open standards.</p></blockquote><p>Recursive domain name servers, transverse a given domain consulting the authoritative servers for each query. In short, the DNS resolver will recursively ask the servers responsible for each part of the way until it finds the path for a specific domain.</p><p>On top of this, Unbound, supports <a href="https://en.wikipedia.org/wiki/DNS_over_TLS">DoT</a>, <a href="https://en.wikipedia.org/wiki/Domain_Name_System_Security_Extensions">DNSSEC</a> and <a href="https://www.isc.org/blogs/qname-minimization-and-privacy/">Query Name Minimization</a>.</p><p>The code is also <a href="https://github.com/NLnetLabs/unbound">open source</a>, and it's nice to know that <a href="https://ostif.org/our-audit-of-unbound-dns-by-x41-d-sec-full-results/">was already been audited</a> at least once, in December 2019.</p><h2>What happens when you start using Unbound?</h2><p>Instead of forwarding the requests to the external upstream DNS servers, your Pi-hole will delegate the request to your own recursive DNS resolver.</p><p>For example:</p><ol><li>The recursive DNS resolver asks the DNS root servers: <strong>"Who is handling <a href="">.com</a>?”</strong></li><li>It receives the response of which TLD servers to ask next.</li><li>The recursive DNS resolver asks one of the TLD DNS servers: <strong>"Who is handling <a href="https://lsvra.com">lsvra.com</a>?"</strong></li><li>It receives the response with the authoritative name servers for <strong><a href="https://lsvra.com">lsvra.com</a></strong>.</li><li>The recursive DNS resolver asks the authoritative name servers for the IP address of <strong><a href="https://lsvra.com"> lsvra.com</a></strong>.</li><li>Finally, it receives the IP address, caches it and passes it to you.<ul></ul></li></ol><p>Since you are doing your own DNS recursive search instead of relying on a 3rd party service, you are the only to know the full path of the websites you visit. <strong>+1 for privacy! 🥇</strong></p><p>This recursive search can also be slower the first time you visit a given website, even though I cannot tell the difference in my daily use. Despite that, after a bit of use, the results start coming instantly from the <strong>local cache</strong>.</p><h2>How do I do set it up?</h2><p>It’s very easy to setup Unbound alongside your current Pi-hole installation.</p><p>After a little bit of research, I’ve found that the Pi-hole documentation already does a very good job explaining how to set up Unbound. Their suggestions for the configuration file contain all the main tweaks you’ll need. 👍</p><p>So, start by installing unbound with:</p><pre><code class="language-no-highlight">sudo apt install unbound
+</code></pre><p>Then download the <strong>root hints file</strong>. This will be the the list of primary root servers which are serving the root domain.<br><br>You can update it <strong>once every six months</strong> or so. The file doesn't change very often.</p><pre><code class="language-no-highlight">wget -O root.hints https://www.internic.net/domain/named.root
+
+sudo mv root.hints /var/lib/unbound/
+</code></pre><p>Next, configure your Unbound installation.</p><pre><code class="language-no-highlight">sudo nano/etc/unbound/unbound.conf.d/pi-hole.conf
+</code></pre><p>We'll use the recommended Pi-hole settings file, but you can still change it's values if needed (eg. turn on <strong>do-ip6</strong> if you have <strong>IPv6 connectivity</strong>).</p><pre><code class="language-no-highlight">server:
+    # If no logfile is specified, syslog is used
+    # logfile: "/var/log/unbound/unbound.log"
+    verbosity: 0
+
+    interface: 127.0.0.1
+    port: 5335
+    do-ip4: yes
+    do-udp: yes
+    do-tcp: yes
+
+    # May be set to yes if you have IPv6 connectivity
+    do-ip6: no
+
+    # You want to leave this to no unless you have *native* IPv6. With 6to4 and
+    # Terredo tunnels your web browser should favor IPv4 for the same reasons
+    prefer-ip6: no
+
+    # Use this only when you downloaded the list of primary root servers!
+    root-hints: "/var/lib/unbound/root.hints"
+
+    # Trust glue only if it is within the server's authority
+    harden-glue: yes
+
+    # Require DNSSEC data for trust-anchored zones, if such data is absent, the zone becomes BOGUS
+    harden-dnssec-stripped: yes
+
+    # Don't use Capitalization randomization as it known to cause DNSSEC issues sometimes
+    # see https://discourse.pi-hole.net/t/unbound-stubby-or-dnscrypt-proxy/9378 for further details
+    use-caps-for-id: no
+
+    # Reduce EDNS reassembly buffer size.
+    # Suggested by the unbound man page to reduce fragmentation reassembly problems
+    edns-buffer-size: 1472
+
+    # Perform prefetching of close to expired message cache entries
+    # This only applies to domains that have been frequently queried
+    prefetch: yes
+
+    # One thread should be sufficient, can be increased on beefy machines. In reality for most users running on small networks or on a single machine, it should be unnecessary to seek performance enhancement by increasing num-threads above 1.
+    num-threads: 1
+
+    # Ensure kernel buffer is large enough to not lose messages in traffic spikes
+    so-rcvbuf: 1m
+
+    # Ensure privacy of local IP ranges
+    private-address: 192.168.0.0/16
+    private-address: 169.254.0.0/16
+    private-address: 172.16.0.0/12
+    private-address: 10.0.0.0/8
+    private-address: fd00::/8
+    private-address: fe80::/10
+
+</code></pre><p>Save it by pressing <strong>Ctrl + X</strong> and accepting the changes.</p><p>Great! It’s almost done!</p><p>Now, start the service and check if your recursive server is operational:</p><pre><code class="language-no-highlight">sudo service unbound start
+
+dig pi-hole.net @127.0.0.1 -p 5335
+</code></pre><p>Then enter the following commands to test the <strong>DNSSEC</strong> validation.</p><p>This one should give you a <strong>SERVFAIL</strong> report (without an IP address).</p><pre><code class="language-no-highlight">dig sigfail.verteiltesysteme.net @127.0.0.1 -p 5335
+</code></pre><p>This one should give you a <strong>NOERROR</strong> report (with an IP address).</p><pre><code class="language-no-highlight">dig sigok.verteiltesysteme.net @127.0.0.1 -p 5335
+</code></pre><p>Finally, disable the current DNS server in your Pi-hole and enable the recursive one.</p><p>You can do this by filling the custom dns field with the value <strong>127.0.0.1#5335</strong> (as seen in the image):</p><img src="/images/posts/pihole-unbound-setup/pihole-unbound-setup-1.png" alt="Pi-hole settings page"/><h2>Last but not least.</h2><p><strong>DO NOT</strong> leave your installation exposed to the internet as it might be used in an <a href="https://www.cloudflare.com/learning/ddos/dns-amplification-ddos-attack/">DNS amplification attack</a>.</p><p>Below you can find a list of services you can use to check if everything is working as expected:</p><ul><li><strong><a href="https://internet.nl/connection/f4642d70e7ac41a0ac4db98c7abc165a/results#control-panel-5">Internet.nl</a></strong>: IPV6 &amp; DNSSEC Validation</li></ul><ul><li><strong><a href="https://www.rootcanary.org/test.html">Root Canary</a></strong>: DNSSEC Validation</li></ul><ul><li><strong><a href="https://canyouseeme.org">Can You See Me?</a></strong>: Open Ports Validation</li></ul><ul><li><strong><a href="https://www.shodan.io/search?query=A+black+hole+for+Internet+advertisements">Shodan</a></strong>: Open Resolver Validation</li></ul><ul><li><strong><a href="https://openresolver.com">Open Resolver</a></strong>: Open Resolver Validation</li></ul><p>Bye! 👋</p></div><span>Tagged with: </span><ul class="tag-list"><li><a href="/tags/pihole">pihole</a></li><li><a href="/tags/unbound">unbound</a></li><li><a href="/tags/privacy">privacy</a></li></ul></article></div><footer><p>Want to reach out? <a href="https://twitter.com/lsvra_">Send me a DM.</a></p><p><a class="the-end" href="https://youtu.be/90Fpjwctqlw">🤖</a></p></footer></body></html>

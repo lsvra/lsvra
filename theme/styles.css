@@ -64,6 +64,12 @@ strong, b {
 
 ul {
     list-style-position: inside;
+    margin-bottom: 10px;
+}
+
+ol {
+    list-style-position: inside;
+    margin-bottom: 10px;
 }
 
 img {
@@ -90,6 +96,10 @@ p {
 
 a {
     color: inherit;
+}
+
+p .the-end {
+    text-decoration: none;
 }
 
 .description {
